@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokexclusive.se - Köhantering</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <div class="app-title-container">
+            <h1 class="app-title">Pokexclusive.se</h1>
+        </div>
+
+        <div id="queue-count" class="queue-info">Kö: 0 ordrar</div>
+
+        <div class="controls">
+            <button id="refreshBtn">Uppdatera</button>
+            <button id="settingsBtn">Inställningar</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="api-settings" class="settings-panel hidden">
+            <h2>Shopify API-inställningar</h2>
+            <div class="form-group">
+                <label for="shopName">Butiksnamn:</label>
+                <input type="text" id="shopName" placeholder="din-butik.myshopify.com">
+            </div>
+            <div class="form-group">
+                <label for="apiKey">API-nyckel:</label>
+                <input type="password" id="apiKey" placeholder="shpat_...">
+            </div>
+            <button id="connectBtn">Anslut</button>
+        </div>
+
+        <div class="queue-container">
+            <div class="queue">
+                <div class="queue-header">Aktiv kö</div>
+                <div id="active-queue" class="queue-items" data-queue-type="active">
+                    <!-- Orders will be inserted here by JavaScript -->
+                </div>
+            </div>
+
+            <div class="queue">
+                <div class="queue-header">Väntande ordrar</div>
+                <div id="standby-queue" class="queue-items" data-queue-type="standby">
+                    <!-- Orders will be inserted here by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div class="status-bar" id="status-bar">
+            <span id="status-text">Redo att ansluta till Shopify...</span>
+            <div class="status-toggle-container">
+                <label for="statusToggle">Visa statusfält:</label>
+                <input type="checkbox" id="statusToggle" checked>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
+    <script src="js/shopify.js"></script>
+    <script src="js/draggable.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
