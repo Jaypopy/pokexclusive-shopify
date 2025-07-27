@@ -1,6 +1,8 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const fetch = require('node-fetch');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,20 +10,32 @@ const PORT = process.env.PORT || 3000;
 // Enable CORS for all routes
 app.use(cors());
 
-// Add request logging middleware for ALL requests
+// Add cache control headers to prevent browser caching
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     next();
 });
 
-// Serve static files
-app.use(express.static('.'));
+// Serve static files from the root directory (one level up from js/)
+app.use(express.static(path.join(__dirname, '..'), {
+    setHeaders: (res) => {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    }
+}));
 
 app.get('/', (req, res) => {
-    res.sendFile('index.html', { root: '.' });
+    // Send the index.html file from the root directory
+    res.sendFile('index.html', {
+        root: path.join(__dirname, '..'),
+        headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, private'
+        }
+    });
 });
 
-// Generic Shopify proxy using middleware
+// Shopify API proxy
 app.use('/shopify-api', async (req, res) => {
     try {
         const shop = req.query.shop;
@@ -31,59 +45,29 @@ app.use('/shopify-api', async (req, res) => {
             return res.status(400).json({ error: 'Missing shop or token parameter' });
         }
 
-        // Extract the path after /shopify-api
+        // Extract path after /shopify-api
         const apiPath = req.url.split('?')[0];  // Get path without query string
-
-        // Build the target URL
         const targetUrl = `https://${shop}${apiPath}`;
-        console.log(`Shopify API request to: ${targetUrl}`);
 
-        // Create a new URLSearchParams object without shop and token
-        const queryParams = new URLSearchParams();
-        for (const [key, value] of Object.entries(req.query)) {
-            if (key !== 'shop' && key !== 'token') {
-                queryParams.append(key, value);
-            }
-        }
+        console.log(`Proxying request to: ${targetUrl}`);
 
-        // Append the query string if there are parameters
-        const queryString = queryParams.toString();
-        const fullUrl = `${targetUrl}${queryString ? '?' + queryString : ''}`;
-
-        console.log(`Making request to: ${fullUrl}`);
-
-        // Make the request to Shopify
-        const response = await fetch(fullUrl, {
+        const response = await fetch(targetUrl, {
             headers: {
                 'X-Shopify-Access-Token': token,
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Cache-Control': 'no-cache'
             }
         });
 
-        console.log(`Shopify API responded with status: ${response.status}`);
-
-        // Get the response data
-        const data = await response.text();
-
-        // Forward status code
-        res.status(response.status);
-
-        // Forward content type
-        const contentType = response.headers.get('content-type');
-        if (contentType) {
-            res.set('Content-Type', contentType);
-        }
-
-        // Send the response
-        res.send(data);
+        const data = await response.json();
+        res.json(data);
     } catch (error) {
         console.error('Shopify API proxy error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Simplified orders endpoint that returns only essential data
+// Real orders endpoint - fetches actual data from Shopify
 app.get('/simplified-orders', async (req, res) => {
     try {
         const shop = req.query.shop;
@@ -93,52 +77,44 @@ app.get('/simplified-orders', async (req, res) => {
             return res.status(400).json({ error: 'Missing shop or token parameter' });
         }
 
-        console.log(`Fetching simplified orders for shop: ${shop}`);
+        // Fetch unfulfilled orders from Shopify
+        const timestamp = Date.now(); // Add timestamp to prevent caching
+        const url = `https://${shop}/admin/api/2023-07/orders.json?status=open&fulfillment_status=unfulfilled&limit=50&_=${timestamp}`;
 
-        // Construct the Shopify API URL for unfulfilled orders
-        const fullUrl = `https://${shop}/admin/api/2023-07/orders.json?status=open&fulfillment_status=unfulfilled&limit=50`;
+        console.log(`Fetching orders from: ${url}`);
 
-        // Make the request to Shopify
-        const response = await fetch(fullUrl, {
+        const response = await fetch(url, {
             headers: {
                 'X-Shopify-Access-Token': token,
-                'Accept': 'application/json'
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
             }
         });
 
         if (!response.ok) {
-            console.error(`Shopify API error: ${response.status}`);
             return res.status(response.status).json({ error: `Shopify API error: ${response.status}` });
         }
 
-        // Parse the response
-        const rawData = await response.json();
+        const data = await response.json();
 
-        // Extract only the data we need
-        const simplifiedOrders = rawData.orders.map(order => {
-            return {
-                id: order.id,
-                name: order.name,
-                created_at: order.created_at,
-                current_total_price: order.current_total_price,
-                products: order.line_items.map(item => ({
-                    name: item.title,
-                    quantity: item.quantity,
-                    price: item.price
-                }))
-            };
+        // Format orders for our app
+        const orders = data.orders.map(order => ({
+            id: order.id,
+            name: order.name,
+            created_at: order.created_at
+        }));
+
+        // Add a timestamp to prevent caching
+        res.json({
+            orders,
+            timestamp: Date.now()
         });
-
-        // Return the simplified data
-        res.json({ orders: simplifiedOrders });
-
     } catch (error) {
-        console.error('Error fetching simplified orders:', error);
+        console.error('Error fetching orders from Shopify:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Start the server
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT} at ${new Date().toISOString()}`);
+    console.log(`Server running on port ${PORT}`);
 });
