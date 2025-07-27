@@ -2,27 +2,21 @@
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pokexclusive.se - Köhantering</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Order Display</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <header>
-        <div class="app-title-container">
-            <h1 class="app-title">Pokexclusive.se</h1>
+    <div class="container" id="main-container">
+        <div class="logo-container">
+            <img src="images/logo.png" id="settingsLogo" class="settings-logo" alt="Settings" title="Öppna inställningar">
         </div>
 
-        <div id="queue-count" class="queue-info">Kö: 0 ordrar</div>
-
-        <div class="controls">
-            <button id="refreshBtn">Uppdatera</button>
-            <button id="settingsBtn">Inställningar</button>
-        </div>
-    </header>
-
-    <div class="container">
         <div id="api-settings" class="settings-panel hidden">
-            <h2>Shopify API-inställningar</h2>
+            <h2>
+                Inställningar
+                <button id="closeSettingsBtn" class="close-settings" title="Stäng">×</button>
+            </h2>
             <div class="form-group">
                 <label for="shopName">Butiksnamn:</label>
                 <input type="text" id="shopName" placeholder="din-butik.myshopify.com">
@@ -31,37 +25,51 @@
                 <label for="apiKey">API-nyckel:</label>
                 <input type="password" id="apiKey" placeholder="shpat_...">
             </div>
+            <div class="form-group">
+                <label for="backgroundImage">Bakgrundsbild:</label>
+                <input type="file" id="backgroundImage" accept="image/*">
+            </div>
+            <div class="form-group">
+                <label for="orderBoxBackground">Bakgrund för nästa order:</label>
+                <input type="file" id="orderBoxBackground" accept="image/*">
+            </div>
+            <div class="form-group">
+                <label for="upcomingOrderBackground">Bakgrund för kommande ordrar:</label>
+                <input type="file" id="upcomingOrderBackground" accept="image/*">
+            </div>
+            <div class="form-group">
+                <label for="nextOrderTextColor">Text färg:</label>
+                <input type="color" id="nextOrderTextColor" value="#ffffff">
+            </div>
+            <div class="form-group">
+                <label for="nextOrderBorderColor">Kant färg:</label>
+                <input type="color" id="nextOrderBorderColor" value="#2E5077">
+            </div>
+            <div class="form-group">
+                <label for="overlayColor">Bakgrund overlay färg:</label>
+                <input type="color" id="overlayColor" value="#000000">
+            </div>
+            <div class="form-group">
+                <label for="overlayOpacity">Bakgrund overlay opacitet: <span id="opacityValue">30%</span></label>
+                <input type="range" id="overlayOpacity" min="0" max="100" value="30">
+            </div>
+            <div class="status-display">
+                <span id="status-text">Redo att ansluta till Shopify...</span>
+            </div>
             <button id="connectBtn">Anslut</button>
         </div>
 
-        <div class="queue-container">
-            <div class="queue">
-                <div class="queue-header">Aktiv kö</div>
-                <div id="active-queue" class="queue-items" data-queue-type="active">
-                    <!-- Orders will be inserted here by JavaScript -->
-                </div>
+        <div id="order-display-container">
+            <div id="queue-count" class="queue-info">Kö: 0 ordrar</div>
+            <div id="next-order-box">
+                <div class="next-order-title">Next order</div>
+                <div class="next-order-number" id="next-order-number">NR#0000</div>
             </div>
-
-            <div class="queue">
-                <div class="queue-header">Väntande ordrar</div>
-                <div id="standby-queue" class="queue-items" data-queue-type="standby">
-                    <!-- Orders will be inserted here by JavaScript -->
-                </div>
-            </div>
-        </div>
-
-        <div class="status-bar" id="status-bar">
-            <span id="status-text">Redo att ansluta till Shopify...</span>
-            <div class="status-toggle-container">
-                <label for="statusToggle">Visa statusfält:</label>
-                <input type="checkbox" id="statusToggle" checked>
-            </div>
+            <div id="upcoming-orders" class="upcoming-orders"></div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.14.0/Sortable.min.js"></script>
     <script src="js/shopify.js"></script>
-    <script src="js/draggable.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
