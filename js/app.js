@@ -1,42 +1,69 @@
-﻿// Main application logic - Swedish translations
+// Simplified application logic
 document.addEventListener('DOMContentLoaded', () => {
     // DOM Elements
-    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsLogo = document.getElementById('settingsLogo');
     const apiSettings = document.getElementById('api-settings');
     const connectBtn = document.getElementById('connectBtn');
-    const refreshBtn = document.getElementById('refreshBtn');
     const statusText = document.getElementById('status-text');
-    const statusBar = document.getElementById('status-bar');
-    const statusToggle = document.getElementById('statusToggle');
-    const activeQueue = document.getElementById('active-queue');
-    const standbyQueue = document.getElementById('standby-queue');
+    const backgroundImageInput = document.getElementById('backgroundImage');
+    const orderBoxBackgroundInput = document.getElementById('orderBoxBackground');
+    const upcomingOrderBackgroundInput = document.getElementById('upcomingOrderBackground');
+    const mainContainer = document.getElementById('main-container');
+    const nextOrderNumberElement = document.getElementById('next-order-number');
     const queueCountElement = document.getElementById('queue-count');
+    const nextOrderBox = document.getElementById('next-order-box');
+    const textColorInput = document.getElementById('nextOrderTextColor');
+    const borderColorInput = document.getElementById('nextOrderBorderColor');
+    const overlayColorInput = document.getElementById('overlayColor');
+    const overlayOpacityInput = document.getElementById('overlayOpacity');
+    const opacityValueSpan = document.getElementById('opacityValue');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const upcomingOrdersElement = document.getElementById('upcoming-orders');
 
     // Application state - make it a window-level variable for cross-script access
     window.state = {
         activeOrders: [],
-        standbyOrders: [],
+        inactiveOrders: [], // Array for inactive orders
         shopName: localStorage.getItem('shopName') || '',
         accessToken: localStorage.getItem('accessToken') || '',
         isConnected: false,
-        refreshInterval: null
+        showingInactive: false // Track if we're showing inactive orders
     };
 
     // Initialize the application
     function init() {
         // Set up event listeners
-        settingsBtn.addEventListener('click', toggleSettings);
+        settingsLogo.addEventListener('click', toggleSettings);
         connectBtn.addEventListener('click', connectToShopify);
-        refreshBtn.addEventListener('click', refreshOrders);
-        statusToggle.addEventListener('change', toggleStatusBar);
+        closeSettingsBtn.addEventListener('click', toggleSettings);
 
-        // Initialize Sortable for drag and drop
-        initializeDragAndDrop();
+        // Add event listener for background image selection
+        backgroundImageInput.addEventListener('change', handleBackgroundImageChange);
+        orderBoxBackgroundInput.addEventListener('change', handleOrderBoxBackground);
+        upcomingOrderBackgroundInput.addEventListener('change', handleUpcomingOrderBackground);
+        textColorInput.addEventListener('input', updateTextColor);
+        borderColorInput.addEventListener('input', updateBorderColor);
+        overlayColorInput.addEventListener('input', updateOverlay);
+        overlayOpacityInput.addEventListener('input', updateOverlay);
 
-        // Load saved queue state
-        loadQueueState();
+        // Fix: Only handle next order box click when not showing inactive orders
+        nextOrderBox.addEventListener('click', handleNextOrderBoxClick);
 
-        // Load saved shop details if available
+        // Toggle between active and inactive views
+        queueCountElement.addEventListener('click', toggleInactiveOrders);
+
+        // Load saved background images and visual settings only
+        loadBackgroundImage();
+        loadOrderBoxBackground();
+        loadUpcomingOrderBackground();
+        loadColorSettings();
+
+        // Initialize empty state instead of loading from localStorage
+        state.activeOrders = [];
+        state.inactiveOrders = [];
+        state.showingInactive = false;
+
+        // Load saved shop credentials (but not order data)
         if (state.shopName && state.accessToken) {
             document.getElementById('shopName').value = state.shopName;
             document.getElementById('apiKey').value = state.accessToken;
@@ -45,13 +72,40 @@ document.addEventListener('DOMContentLoaded', () => {
             connectToShopify();
         }
 
-        // Set status bar visibility based on saved preference
-        const showStatusBar = localStorage.getItem('showStatusBar') !== 'false';
-        statusToggle.checked = showStatusBar;
-        statusBar.classList.toggle('hidden', !showStatusBar);
-
-        // Update queue count
+        // Update UI with current state
+        updateNextOrderNumber();
         updateQueueCount();
+
+        addTouchSupport();
+    }
+
+    function addTouchSupport() {
+        // Prevent double-tap zoom on iOS
+        document.addEventListener('touchend', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        // Add touchstart listeners in addition to click listeners
+        queueCountElement.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            toggleInactiveOrders();
+        }, { passive: false });
+
+        nextOrderBox.addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            handleNextOrderBoxClick();
+        }, { passive: false });
+    }
+
+    // Handle next order box click based on current view
+    function handleNextOrderBoxClick() {
+        if (!state.showingInactive) {
+            // Skip the current order if we're showing active orders
+            if (state.activeOrders.length > 0) {
+                skipOrder(0);
+            }
+        }
+        // Do nothing when showing inactive orders - it's just informational
     }
 
     // Toggle settings panel
@@ -59,15 +113,323 @@ document.addEventListener('DOMContentLoaded', () => {
         apiSettings.classList.toggle('hidden');
     }
 
-    // Toggle status bar
-    function toggleStatusBar() {
-        const isVisible = statusToggle.checked;
-        statusBar.classList.toggle('hidden', !isVisible);
-        localStorage.setItem('showStatusBar', isVisible);
+    // Handle background image selection
+    function handleBackgroundImageChange(event) {
+        const file = event.target.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                // Set the background image
+                mainContainer.style.backgroundImage = `url('${e.target.result}')`;
+
+                // Save to local storage (base64)
+                localStorage.setItem('backgroundImage', e.target.result);
+
+                updateStatus('Bakgrundsbild uppdaterad', 'success');
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // Handle order box background
+    function handleOrderBoxBackground(event) {
+        const file = event.target.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                // Set custom property for the background
+                document.documentElement.style.setProperty('--next-order-bg', `url('${e.target.result}')`);
+
+                // Save to local storage
+                localStorage.setItem('orderBoxBackground', e.target.result);
+
+                updateStatus('Bakgrund för nästa order uppdaterad', 'success');
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // Handle upcoming order background
+    function handleUpcomingOrderBackground(event) {
+        const file = event.target.files[0];
+
+        if (file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                // Set custom property for the background
+                document.documentElement.style.setProperty('--upcoming-order-bg', `url('${e.target.result}')`);
+
+                // Save to local storage
+                localStorage.setItem('upcomingOrderBackground', e.target.result);
+
+                updateStatus('Bakgrund för kommande ordrar uppdaterad', 'success');
+            };
+
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // Load saved background image
+    function loadBackgroundImage() {
+        const savedImage = localStorage.getItem('backgroundImage');
+        if (savedImage) {
+            mainContainer.style.backgroundImage = `url('${savedImage}')`;
+        }
+    }
+
+    // Load saved order box background
+    function loadOrderBoxBackground() {
+        const savedImage = localStorage.getItem('orderBoxBackground');
+        if (savedImage) {
+            document.documentElement.style.setProperty('--next-order-bg', `url('${savedImage}')`);
+        }
+    }
+
+    // Load saved upcoming order background
+    function loadUpcomingOrderBackground() {
+        const savedImage = localStorage.getItem('upcomingOrderBackground');
+        if (savedImage) {
+            document.documentElement.style.setProperty('--upcoming-order-bg', `url('${savedImage}')`);
+        }
+    }
+
+    // Update text color
+    function updateTextColor(event) {
+        const color = event.target.value;
+        document.documentElement.style.setProperty('--next-order-text-color', color);
+        localStorage.setItem('nextOrderTextColor', color);
+    }
+
+    // Update border color
+    function updateBorderColor(event) {
+        const color = event.target.value;
+        document.documentElement.style.setProperty('--next-order-border-color', color);
+        localStorage.setItem('nextOrderBorderColor', color);
+    }
+
+    // Update overlay color and opacity
+    function updateOverlay() {
+        const color = overlayColorInput.value;
+        const opacity = overlayOpacityInput.value / 100;
+
+        // Convert hex to rgba
+        const r = parseInt(color.substr(1, 2), 16);
+        const g = parseInt(color.substr(3, 2), 16);
+        const b = parseInt(color.substr(5, 2), 16);
+
+        const rgba = `rgba(${r}, ${g}, ${b}, ${opacity})`;
+        document.documentElement.style.setProperty('--overlay-color', rgba);
+
+        // Update opacity percentage display
+        opacityValueSpan.textContent = `${overlayOpacityInput.value}%`;
+
+        // Save settings
+        localStorage.setItem('overlayColor', color);
+        localStorage.setItem('overlayOpacity', overlayOpacityInput.value);
+    }
+
+    // Load color settings
+    function loadColorSettings() {
+        // Load text color
+        const textColor = localStorage.getItem('nextOrderTextColor');
+        if (textColor) {
+            textColorInput.value = textColor;
+            document.documentElement.style.setProperty('--next-order-text-color', textColor);
+        }
+
+        // Load border color
+        const borderColor = localStorage.getItem('nextOrderBorderColor');
+        if (borderColor) {
+            borderColorInput.value = borderColor;
+            document.documentElement.style.setProperty('--next-order-border-color', borderColor);
+        }
+
+        // Load overlay color and opacity
+        const overlayColor = localStorage.getItem('overlayColor');
+        const overlayOpacity = localStorage.getItem('overlayOpacity');
+
+        if (overlayColor) {
+            overlayColorInput.value = overlayColor;
+        }
+
+        if (overlayOpacity) {
+            overlayOpacityInput.value = overlayOpacity;
+            opacityValueSpan.textContent = `${overlayOpacity}%`;
+        }
+
+        // Apply overlay (this will use either stored or default values)
+        updateOverlay();
+    }
+
+    // Update next order number
+    function updateNextOrderNumber() {
+        if (state.showingInactive) {
+            // If we're showing inactive orders, display a message
+            document.querySelector('.next-order-title').textContent = 'Inaktiva ordrar'; // Update the title
+            nextOrderNumberElement.textContent = state.inactiveOrders.length > 0 ?
+                `${state.inactiveOrders.length} st` :
+                'Inga';
+            nextOrderBox.classList.add('showing-inactive');
+
+            // Show inactive orders
+            displayInactiveOrders();
+        } else {
+            // Reset inactive styling and title
+            document.querySelector('.next-order-title').textContent = 'Next order'; // Reset the title
+            nextOrderBox.classList.remove('showing-inactive');
+
+            if (state.activeOrders && state.activeOrders.length > 0) {
+                const nextOrder = state.activeOrders[0];
+                nextOrderNumberElement.textContent = nextOrder.orderNumber || 'NR#0000';
+
+                // Show upcoming orders if there are more than 1 order
+                displayActiveOrders();
+            } else {
+                nextOrderNumberElement.textContent = 'Kön är tom!';
+                // Clear any upcoming orders
+                upcomingOrdersElement.innerHTML = '';
+            }
+        }
+    }
+
+    // Display active orders (only the upcoming ones after the first)
+    function displayActiveOrders() {
+        upcomingOrdersElement.innerHTML = ''; // Clear previous content
+
+        if (state.activeOrders.length > 1) {
+            // Get the next 3 orders (or fewer if there aren't enough)
+            const upcomingOrders = state.activeOrders.slice(1, 4);
+
+            // Create elements for each upcoming order
+            upcomingOrders.forEach((order, index) => {
+                const orderElement = document.createElement('div');
+                orderElement.className = 'upcoming-order';
+                orderElement.textContent = order.orderNumber || 'NR#0000';
+
+                // Add click event listener to skip this order
+                orderElement.addEventListener('click', () => skipOrder(index + 1));
+
+                upcomingOrdersElement.appendChild(orderElement);
+            });
+        }
+    }
+
+    // Display inactive orders
+    function displayInactiveOrders() {
+        upcomingOrdersElement.innerHTML = ''; // Clear previous content
+
+        if (state.inactiveOrders.length > 0) {
+            // Create elements for each inactive order
+            state.inactiveOrders.forEach((order, index) => {
+                const orderElement = document.createElement('div');
+                orderElement.className = 'upcoming-order inactive-order';
+                orderElement.textContent = order.orderNumber || 'NR#0000';
+
+                // Add click event listener to reactivate this order
+                orderElement.addEventListener('click', () => reactivateOrder(index));
+
+                upcomingOrdersElement.appendChild(orderElement);
+            });
+        } else {
+            // Show a message if no inactive orders
+            const messageElement = document.createElement('div');
+            messageElement.className = 'upcoming-order no-orders';
+            messageElement.textContent = 'Inga inaktiva ordrar';
+            upcomingOrdersElement.appendChild(messageElement);
+        }
+    }
+
+    // Toggle between showing active and inactive orders
+    function toggleInactiveOrders() {
+        state.showingInactive = !state.showingInactive;
+
+        // Update the UI to reflect the change
+        if (state.showingInactive) {
+            queueCountElement.classList.add('showing-inactive');
+            queueCountElement.textContent = `Inaktiva: ${state.inactiveOrders.length}`;
+        } else {
+            queueCountElement.classList.remove('showing-inactive');
+            updateQueueCount();
+        }
+
+        // Update the orders display
+        updateNextOrderNumber();
+    }
+
+    // Skip an order - move it to inactive pool
+    function skipOrder(index) {
+        if (state.activeOrders.length <= index) return;
+
+        // Get the order to skip
+        const skippedOrder = state.activeOrders[index];
+
+        // Check if this order is already in the inactive pool (by ID to avoid duplicates)
+        const alreadyInactive = state.inactiveOrders.some(order => order.id === skippedOrder.id);
+
+        if (!alreadyInactive) {
+            // Remove the order from active orders array
+            state.activeOrders.splice(index, 1);
+            // Add to inactive orders
+            state.inactiveOrders.push(skippedOrder);
+
+            updateStatus(`Order ${skippedOrder.orderNumber} flyttad till inaktiva ordrar`, 'info');
+        } else {
+            // Just remove from active if it's already in inactive
+            state.activeOrders.splice(index, 1);
+            updateStatus(`Order ${skippedOrder.orderNumber} borttagen från aktiv kö`, 'info');
+        }
+
+        // Update the display
+        updateNextOrderNumber();
+        updateQueueCount();
+    }
+
+    // Reactivate an order from the inactive pool
+    function reactivateOrder(index) {
+        if (state.inactiveOrders.length <= index) return;
+
+        // Get the order to reactivate
+        const reactivatedOrder = state.inactiveOrders[index];
+
+        // Check if this order is already in the active pool (by ID to avoid duplicates)
+        const alreadyActive = state.activeOrders.some(order => order.id === reactivatedOrder.id);
+
+        if (!alreadyActive) {
+            // Remove from inactive orders
+            state.inactiveOrders.splice(index, 1);
+            // Add to active orders
+            state.activeOrders.push(reactivatedOrder);
+
+            updateStatus(`Order ${reactivatedOrder.orderNumber} återaktiverad`, 'success');
+        } else {
+            // Just remove from inactive if it's already active
+            state.inactiveOrders.splice(index, 1);
+            updateStatus(`Order ${reactivatedOrder.orderNumber} borttagen från inaktiv kö`, 'info');
+        }
+
+        // Update the display
+        updateNextOrderNumber();
+        updateQueueCount();
+
+        // If we're now out of inactive orders, switch back to active view
+        if (state.inactiveOrders.length === 0) {
+            state.showingInactive = false;
+            queueCountElement.classList.remove('showing-inactive');
+        }
     }
 
     // Connect to Shopify
     function connectToShopify() {
+        // Add console logs to debug
+        console.log("Connect to Shopify button clicked");
+
         const shopName = document.getElementById('shopName').value;
         const apiKey = document.getElementById('apiKey').value;
 
@@ -76,47 +438,47 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Update state and save to localStorage
-        state.shopName = formatShopName(shopName);
-        state.accessToken = apiKey;
-        localStorage.setItem('shopName', state.shopName);
-        localStorage.setItem('accessToken', state.accessToken);
-
-        updateStatus('Ansluter till Shopify...', 'info');
-
-        // Test connection by fetching shop info
-        fetchShopInfo()
-            .then(shop => {
-                updateStatus(`Ansluten till ${shop.name}`, 'success');
-                state.isConnected = true;
-
-                // Start auto-refresh
-                startAutoRefresh();
-
-                // Hide settings panel
-                apiSettings.classList.add('hidden');
-
-                // Fetch orders
-                refreshOrders();
-            })
-            .catch(error => {
-                updateStatus(`Anslutning misslyckades: ${error.message}`, 'error');
-                state.isConnected = false;
-            });
-    }
-
-    // Start auto-refresh
-    function startAutoRefresh(interval = 60000) { // Default: 1 minute
-        // Clear any existing interval
-        if (state.refreshInterval) {
-            clearInterval(state.refreshInterval);
+        // Check if formatShopName is available
+        if (typeof window.formatShopName !== 'function') {
+            console.error('formatShopName function is not available');
+            updateStatus('Ett fel uppstod. Ladda om sidan och försök igen.', 'error');
+            return;
         }
 
-        // Set new interval
-        state.refreshInterval = setInterval(() => {
-            refreshOrders();
-            updateStatus(`Auto-uppdaterad kl ${new Date().toLocaleTimeString()}`, 'info');
-        }, interval);
+        console.log("Formatting shop name:", shopName);
+
+        try {
+            // Update state and save to localStorage
+            state.shopName = window.formatShopName(shopName);  // FIXED: Use window.formatShopName
+            state.accessToken = apiKey;
+            localStorage.setItem('shopName', state.shopName);
+            localStorage.setItem('accessToken', state.accessToken);
+
+            updateStatus('Ansluter till Shopify...', 'info');
+
+            // Test connection by fetching shop info
+            console.log("Calling fetchShopInfo");
+            window.fetchShopInfo()  // FIXED: Use window.fetchShopInfo
+                .then(shop => {
+                    console.log("Shop info received:", shop);
+                    updateStatus(`Ansluten till ${shop.name}`, 'success');
+                    state.isConnected = true;
+
+                    // Hide settings panel
+                    apiSettings.classList.add('hidden');
+
+                    // Fetch orders
+                    refreshOrders();
+                })
+                .catch(error => {
+                    console.error("Error in fetchShopInfo:", error);
+                    updateStatus(`Anslutning misslyckades: ${error.message}`, 'error');
+                    state.isConnected = false;
+                });
+        } catch (error) {
+            console.error("Error in connectToShopify:", error);
+            updateStatus(`Ett fel uppstod: ${error.message}`, 'error');
+        }
     }
 
     // Refresh orders
@@ -128,30 +490,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateStatus('Hämtar ordrar...', 'info');
 
-        fetchOrders()
-            .then(orders => {
-                // Filter out orders already in standby
-                const standbyOrderIds = state.standbyOrders.map(order => order.id);
-                const newOrders = orders.filter(order => !standbyOrderIds.includes(order.id));
+        window.fetchOrders()  // FIXED: Use window.fetchOrders
+            .then(newOrders => {
+                console.log("Orders received:", newOrders);
 
-                // Update state
-                state.activeOrders = newOrders.map((order, index) => ({
-                    ...order,
-                    queuePosition: index + 1
-                }));
+                // Filter out any orders that are already in the inactive list
+                const inactiveOrderIds = state.inactiveOrders.map(order => order.id);
+                const filteredOrders = newOrders.filter(order => !inactiveOrderIds.includes(order.id));
 
-                // Render orders
-                renderOrders();
+                // IMPORTANT: Replace all active orders with fresh data instead of maintaining old ones
+                // This ensures orders no longer unfulfilled are removed
+                state.activeOrders = filteredOrders;
+
+                // Update next order number and upcoming orders
+                updateNextOrderNumber();
+
+                // Start auto refresh
+                startAutoRefresh();
 
                 // Update queue count
                 updateQueueCount();
 
-                // Save queue state
-                saveQueueState();
-
-                updateStatus(`Hämtade ${orders.length} ordrar`, 'success');
+                updateStatus(`Hämtade ${filteredOrders.length} aktiva ordrar`, 'success');
             })
             .catch(error => {
+                console.error("Error in fetchOrders:", error);
                 updateStatus(`Kunde inte hämta ordrar: ${error.message}`, 'error');
             });
     }
@@ -159,197 +522,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update queue count display
     function updateQueueCount() {
         if (queueCountElement) {
-            const totalOrders = state.activeOrders.length + state.standbyOrders.length;
-            queueCountElement.textContent = `Kö: ${totalOrders} ordrar`;
-        }
-    }
+            if (state.showingInactive) {
+                queueCountElement.textContent = `Inaktiva: ${state.inactiveOrders.length}`;
+            } else {
+                const activeCount = state.activeOrders.length;
+                const inactiveCount = state.inactiveOrders.length;
 
-    // Render orders in the UI
-    function renderOrders() {
-        renderQueue(activeQueue, state.activeOrders, 'active');
-        renderQueue(standbyQueue, state.standbyOrders, 'standby');
-    }
+                queueCountElement.textContent = `Kö: ${activeCount} ordrar`;
 
-    // Render a single queue
-    function renderQueue(queueElement, orders, queueType) {
-        // Clear current content
-        queueElement.innerHTML = '';
-
-        // Add each order
-        orders.forEach(order => {
-            const orderElement = createOrderElement(order, queueType);
-            queueElement.appendChild(orderElement);
-        });
-    }
-
-    // Create HTML for an order
-    function createOrderElement(order, queueType) {
-        const orderElement = document.createElement('div');
-        orderElement.className = 'order-item';
-        orderElement.dataset.orderId = order.id;
-
-        // Create order header
-        const header = document.createElement('div');
-        header.className = 'order-header';
-
-        // Add drag handle
-        const dragHandle = document.createElement('div');
-        dragHandle.className = 'drag-handle';
-        header.appendChild(dragHandle);
-
-        // Add position number
-        const position = document.createElement('span');
-        position.className = 'position';
-        position.textContent = order.queuePosition;
-        header.appendChild(position);
-
-        // Add order number
-        const orderNumber = document.createElement('span');
-        orderNumber.className = 'order-number';
-        orderNumber.textContent = order.orderNumber;
-        header.appendChild(orderNumber);
-
-        // Add date
-        const date = document.createElement('span');
-        date.className = 'order-date';
-        // Format date in Swedish
-        date.textContent = formatSwedishDate(order.orderDate);
-        header.appendChild(date);
-
-        // Add action button
-        if (queueType === 'active') {
-            const moveToStandbyBtn = document.createElement('button');
-            moveToStandbyBtn.className = 'btn info';
-            moveToStandbyBtn.textContent = '⏱️';
-            moveToStandbyBtn.setAttribute('aria-label', 'Flytta till väntelista');
-            moveToStandbyBtn.addEventListener('click', () => moveToStandbyQueue(order.id));
-            header.appendChild(moveToStandbyBtn);
-        } else if (queueType === 'standby') {
-            const moveBtn = document.createElement('button');
-            moveBtn.className = 'btn info';
-            moveBtn.textContent = '➡';
-            moveBtn.setAttribute('aria-label', 'Flytta till aktiv kö');
-            moveBtn.addEventListener('click', () => moveToActiveQueue(order.id));
-            header.appendChild(moveBtn);
-        }
-
-        orderElement.appendChild(header);
-
-        // Add order items
-        const itemsContainer = document.createElement('div');
-        itemsContainer.className = 'order-items';
-
-        order.orderItems.forEach(item => {
-            const itemRow = document.createElement('div');
-            itemRow.className = 'order-item-row';
-
-            // Add image if available
-            if (item.imageUrl) {
-                const img = document.createElement('img');
-                img.src = item.imageUrl;
-                img.alt = item.title;
-                img.className = 'item-image';
-                itemRow.appendChild(img);
+                // Add a visual indicator if there are inactive orders
+                if (inactiveCount > 0) {
+                    queueCountElement.classList.add('has-inactive');
+                } else {
+                    queueCountElement.classList.remove('has-inactive');
+                }
             }
-
-            // Add item details
-            const details = document.createElement('div');
-            details.className = 'item-details';
-
-            const title = document.createElement('div');
-            title.className = 'item-title';
-            title.textContent = item.title;
-            details.appendChild(title);
-
-            if (item.variant) {
-                const variant = document.createElement('div');
-                variant.className = 'item-variant';
-                variant.textContent = item.variant;
-                details.appendChild(variant);
-            }
-
-            const meta = document.createElement('div');
-            meta.className = 'item-meta';
-
-            const quantity = document.createElement('span');
-            quantity.textContent = `Antal: ${item.quantity}`;
-            meta.appendChild(quantity);
-
-            const price = document.createElement('span');
-            price.textContent = formatCurrency(item.price);
-            meta.appendChild(price);
-
-            details.appendChild(meta);
-            itemRow.appendChild(details);
-
-            itemsContainer.appendChild(itemRow);
-        });
-
-        orderElement.appendChild(itemsContainer);
-        return orderElement;
-    }
-
-    // Format date in Swedish
-    function formatSwedishDate(date) {
-        return new Date(date).toLocaleString('sv-SE', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-
-    // Mark order as delivered *Will use later possibly*
-    function markAsDelivered(orderId) {
-        const orderIndex = state.activeOrders.findIndex(order => order.id === orderId);
-
-        if (orderIndex !== -1) {
-            // Remove from active queue
-            const orderNumber = state.activeOrders[orderIndex].orderNumber;
-            state.activeOrders.splice(orderIndex, 1);
-
-            // Update positions
-            state.activeOrders.forEach((order, index) => {
-                order.queuePosition = index + 1;
-            });
-
-            // Re-render
-            renderOrders();
-
-            // Update queue count
-            updateQueueCount();
-
-            // Save queue state
-            saveQueueState();
-
-            updateStatus(`Order ${orderNumber} markerad som levererad`, 'success');
         }
     }
 
-    // Move order to active queue
-    function moveToActiveQueue(orderId) {
-        const orderIndex = state.standbyOrders.findIndex(order => order.id === orderId);
-
-        if (orderIndex !== -1) {
-            // Remove from standby
-            const order = state.standbyOrders.splice(orderIndex, 1)[0];
-
-            // Add to active queue
-            order.queuePosition = state.activeOrders.length + 1;
-            state.activeOrders.push(order);
-
-            // Re-render
-            renderOrders();
-
-            // Save queue state
-            saveQueueState();
-
-            updateStatus(`Flyttade ${order.orderNumber} till aktiv kö`, 'success');
-        }
-    }
-
-    // Update status message
+    // Update status message (now only in settings)
     window.updateStatus = function (message, type = 'info') {
         statusText.textContent = message;
 
@@ -364,147 +555,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Format currency in Swedish format
-    function formatCurrency(amount) {
-        return new Intl.NumberFormat('sv-SE', {
-            style: 'currency',
-            currency: 'SEK'
-        }).format(amount);
-    }
-
-    // Save queue state to localStorage
-    function saveQueueState() {
-        localStorage.setItem('activeQueue', JSON.stringify(state.activeOrders));
-        localStorage.setItem('standbyQueue', JSON.stringify(state.standbyOrders));
-        localStorage.setItem('queueSaveTime', Date.now());
-    }
-
-    // Load queue state from localStorage
-    function loadQueueState() {
-        const activeQueue = localStorage.getItem('activeQueue');
-        const standbyQueue = localStorage.getItem('standbyQueue');
-
-        if (activeQueue) {
-            state.activeOrders = JSON.parse(activeQueue);
+    // Start automatic refresh
+    function startAutoRefresh(interval = 30000) { // Refresh every 30 seconds
+        // Clear any existing interval
+        if (window.refreshInterval) {
+            clearInterval(window.refreshInterval);
         }
 
-        if (standbyQueue) {
-            state.standbyOrders = JSON.parse(standbyQueue);
-        }
-
-        // Get save time
-        const saveTime = localStorage.getItem('queueSaveTime');
-        if (saveTime) {
-            const saveDate = new Date(parseInt(saveTime));
-            updateStatus(`Laddade kö från ${new Date(saveDate).toLocaleString('sv-SE')}`, 'info');
-        }
-    }
-    function moveToStandbyQueue(orderId) {
-        const orderIndex = state.activeOrders.findIndex(order => order.id === orderId);
-
-        if (orderIndex !== -1) {
-            // Remove from active queue
-            const order = state.activeOrders.splice(orderIndex, 1)[0];
-
-            // Add to standby queue
-            state.standbyOrders.push(order);
-
-            // Update active queue positions
-            state.activeOrders.forEach((order, index) => {
-                order.queuePosition = index + 1;
-            });
-
-            // Re-render
-            renderOrders();
-
-            // Update queue count
-            updateQueueCount();
-
-            // Save queue state
-            saveQueueState();
-
-            updateStatus(`Flyttade ${order.orderNumber} till väntelistan`, 'success');
-        }
-    }
-
-    // Make some functions globally available for other scripts
-    window.moveOrderBetweenQueues = function (orderId, fromQueue, toQueue, newIndex) {
-        let order;
-
-        // Remove from source queue
-        if (fromQueue === 'active') {
-            const index = state.activeOrders.findIndex(o => o.id === orderId);
-            if (index !== -1) {
-                order = state.activeOrders.splice(index, 1)[0];
+        // Set new interval
+        window.refreshInterval = setInterval(() => {
+            if (state.isConnected) {
+                refreshOrders();
             }
-        } else {
-            const index = state.standbyOrders.findIndex(o => o.id === orderId);
-            if (index !== -1) {
-                order = state.standbyOrders.splice(index, 1)[0];
-            }
-        }
-
-        if (!order) return;
-
-        // Add to target queue
-        if (toQueue === 'active') {
-            if (newIndex !== undefined && newIndex < state.activeOrders.length) {
-                state.activeOrders.splice(newIndex, 0, order);
-            } else {
-                state.activeOrders.push(order);
-            }
-            updateStatus(`Flyttade ${order.orderNumber} till aktiv kö`, 'success');
-        } else {
-            if (newIndex !== undefined && newIndex < state.standbyOrders.length) {
-                state.standbyOrders.splice(newIndex, 0, order);
-            } else {
-                state.standbyOrders.push(order);
-            }
-            updateStatus(`Flyttade ${order.orderNumber} till väntelistan`, 'success');
-        }
-
-        // Update queue positions
-        updateQueuePositions();
-
-        // Update queue count
-        updateQueueCount();
-
-        // Save queue state
-        saveQueueState();
+        }, interval);
     }
-
-    // Make reorderQueue globally available
-    window.reorderQueue = function (queueType, oldIndex, newIndex) {
-        if (queueType === 'active') {
-            const order = state.activeOrders.splice(oldIndex, 1)[0];
-            state.activeOrders.splice(newIndex, 0, order);
-            updateStatus(`Omordnad: flyttade ${order.orderNumber} till position ${newIndex + 1}`, 'success');
-        } else {
-            const order = state.standbyOrders.splice(oldIndex, 1)[0];
-            state.standbyOrders.splice(newIndex, 0, order);
-            updateStatus(`Omordnad väntlista: flyttade ${order.orderNumber}`, 'success');
-        }
-
-        // Update queue positions
-        updateQueuePositions();
-
-        // Save queue state
-        saveQueueState();
-    }
-
-    // Make updateQueuePositions globally available
-    window.updateQueuePositions = function () {
-        // Update active queue positions
-        state.activeOrders.forEach((order, index) => {
-            order.queuePosition = index + 1;
-        });
-
-        // Re-render to reflect changes
-        renderOrders();
-    }
-
-    // Make renderOrders globally available
-    window.renderOrders = renderOrders;
 
     // Initialize the app
     init();
