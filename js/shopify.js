@@ -68,6 +68,9 @@ window.fetchOrders = async function (maxAttempts = 3) {
                     orderDate: new Date(order.created_at)
                 }));
 
+                // Sort orders by date (oldest first)
+                formattedOrders.sort((a, b) => a.orderDate - b.orderDate);
+
                 return formattedOrders;
             } catch (error) {
                 attempts++;
